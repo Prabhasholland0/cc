@@ -16,11 +16,25 @@ const app = express();
 app.use(express.json({ limit: '250kb' }));
 // The server listens on loopback behind a reverse proxy; trust it so req.ip is the visitor's address.
 app.set('trust proxy', 'loopback');
+// Simple in-memory limiter per visitor IP: `max` counted events per `windowMs`.
+function limiter(max: number, windowMs: number) {
+  const hits = new Map<string, { count: number; since: number }>();
+  const current = (req: Request) => { const key = req.ip || 'unknown'; const entry = hits.get(key); if (entry && Date.now() - entry.since > windowMs) { hits.delete(key); return undefined; } return entry; };
+  return {
+    allowed: (req: Request) => (current(req)?.count ?? 0) < max,
+    hit: (req: Request) => { const entry = current(req); hits.set(req.ip || 'unknown', entry ? { ...entry, count: entry.count + 1 } : { count: 1, since: Date.now() }); },
+  };
+}
+const staffFailures = limiter(10, 15 * 60_000);
+const newBookings = limiter(10, 60 * 60_000);
+const newCallbacks = limiter(5, 60 * 60_000);
+const tooMany = (res: Response, message: string) => res.status(429).json({ error: message });
 const secret = process.env.ADMIN_SECRET;
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const token = req.header('x-admin-token');
   if (!secret) { res.status(503).json({ error: 'Staff access is not configured. Set ADMIN_SECRET on the server.' }); return; }
-  if (!token || Buffer.byteLength(token) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(token), Buffer.from(secret))) { res.status(401).json({ error: 'Invalid staff credentials.' }); return; }
+  if (!staffFailures.allowed(req)) { tooMany(res, 'Too many wrong passcodes. Staff login is locked for 15 minutes on this network.'); return; }
+  if (!token || Buffer.byteLength(token) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(token), Buffer.from(secret))) { staffFailures.hit(req); res.status(401).json({ error: 'Invalid staff credentials.' }); return; }
   next();
 }
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value, 'Enter a valid date');
@@ -61,11 +75,12 @@ app.post('/api/enquiries', (req, res) => {
     if (fields.some(key => JSON.stringify(existing[key]) !== JSON.stringify(input[key]))) { res.status(409).json({ error: `An earlier version of this request was already saved as ${existing.id}. Please call us with that reference to change its details.` }); return; }
     receipt(res, existing, 200); return;
   }
+  if (!newBookings.allowed(req)) { tooMany(res, 'We’ve received several bookings from this network in the last hour. Please call 95154 47834 or message us on WhatsApp to book.'); return; }
   let quote;
   try { quote = calculateQuote(getPricing(), input.selection); } catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
   if (Math.abs(quote.total - input.estimatedPrice) > 0.01) { res.status(409).json({ error: 'Pricing has changed. Please close this form and refresh the page to review current rates before submitting.' }); return; }
   const record: EnquiryRecord = { ...input, id: `CC-${randomUUID().slice(0, 8).toUpperCase()}`, createdAt: new Date().toISOString(), status: 'new', serviceId: quote.service.id, serviceName: quote.service.title, packageName: quote.scope, customScope: quote.scope, estimatedPrice: quote.total };
-  saveEnquiry(record); alertNewBooking(record); receipt(res, record);
+  saveEnquiry(record); newBookings.hit(req); alertNewBooking(record); receipt(res, record);
 });
 const callbackSchema = z.object({
   requestId: z.string().uuid(), name: z.string().trim().min(2).max(100), phone: z.string().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number'),
@@ -77,9 +92,10 @@ app.post('/api/callbacks', (req, res) => {
   const { website: _honeypot, ...input } = parsed.data;
   const existing = getCallbacks().find(record => record.requestId === input.requestId);
   if (existing) { res.status(200).json({ success: true, callbackId: existing.id }); return; }
+  if (!newCallbacks.allowed(req)) { tooMany(res, 'We’ve received several callback requests from this network. Please call 95154 47834 or message us on WhatsApp.'); return; }
   const serviceId = getPricing().services.some(service => service.id === input.serviceId) ? input.serviceId : undefined;
   const record: CallbackRecord = { ...input, serviceId, id: `CB-${randomUUID().slice(0, 8).toUpperCase()}`, createdAt: new Date().toISOString(), status: 'new' };
-  saveCallback(record); alertCallback(record, getPricing().services.find(service => service.id === serviceId)?.title); res.status(201).json({ success: true, callbackId: record.id });
+  saveCallback(record); newCallbacks.hit(req); alertCallback(record, getPricing().services.find(service => service.id === serviceId)?.title); res.status(201).json({ success: true, callbackId: record.id });
 });
 app.get('/api/callbacks', requireAdmin, (_req, res) => res.json(getCallbacks()));
 app.patch('/api/callbacks/:id', requireAdmin, (req, res) => {

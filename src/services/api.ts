@@ -77,6 +77,7 @@ export async function fetchEnquiriesApi(adminToken: string): Promise<EnquiryReco
         'x-admin-token': adminToken,
       },
     });
+    if (res.status === 429) throw new Error((await res.json().catch(() => ({}))).error || 'Too many attempts. Please wait 15 minutes.');
     if (!res.ok) throw new Error('Unauthorized or failed to fetch enquiries');
     return await res.json();
   } catch (err) {

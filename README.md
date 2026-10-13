@@ -42,3 +42,9 @@ The owner hears about new activity in three ways:
 ## Customer tracking
 
 Customers can open `/track` with their booking reference and mobile number to see the status, request a reschedule, or cancel up to the day before the visit. Staff see these requests flagged in the portal.
+
+## Spam and login protection
+
+- Each network (IP address) can send up to 10 new bookings and 5 callback requests per hour. Beyond that, the visitor is asked to call or WhatsApp instead.
+- After 10 wrong staff passcodes, staff login is locked for 15 minutes on that network.
+- Limits reset when the server restarts. Behind a reverse proxy, keep `trust proxy` pointed at the proxy so each visitor is counted separately.

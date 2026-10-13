@@ -85,6 +85,9 @@ try {
   const callbacks = await (await api('/api/callbacks', 'GET', undefined, true)).json();
   assert.equal(callbacks.length, 1);
   assert.equal(callbacks[0].status, 'called');
+  // Spam limit: 5 new callback requests per network per hour.
+  for (let i = 0; i < 4; i++) assert.equal((await api('/api/callbacks', 'POST', { ...callback, requestId: randomUUID() })).status, 201);
+  assert.equal((await api('/api/callbacks', 'POST', { ...callback, requestId: randomUUID() })).status, 429);
   // Customer tracking: reference + mobile number, reschedule and cancel requests.
   assert.equal((await api('/api/track', 'POST', { reference: created.enquiryId, phone: payload.phone })).status, 200);
   assert.equal((await api('/api/track/change', 'POST', { reference: created.enquiryId, phone: payload.phone, type: 'cancel' })).status, 409, 'completed bookings cannot be cancelled');
@@ -110,10 +113,16 @@ try {
   const today = { ...payload, requestId: randomUUID(), preferredDate: indiaDate() };
   const todayId = (await (await api('/api/enquiries', 'POST', today)).json()).enquiryId;
   assert.equal((await api('/api/track/change', 'POST', { reference: todayId, phone: today.phone, type: 'cancel' })).status, 409, 'same-day changes need a phone call');
+  // Staff lockout: 10 wrong passcodes lock staff login for 15 minutes, even for the right passcode.
+  const wrong = () => fetch(base + '/api/enquiries', { headers: { 'x-admin-token': 'wrong' } });
+  let wrongStatuses = 0;
+  while ((await wrong()).status === 401) wrongStatuses++;
+  assert.ok(wrongStatuses <= 10, 'lockout must start by the 11th wrong passcode');
+  assert.equal((await api('/api/enquiries', 'GET', undefined, true)).status, 429);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('Simulated network failure'); };
   try { assert.equal((await submitEnquiryApi({ ...payload, serviceId: 'full-home', serviceName: 'Full Home Cleaning' })).success, false); } finally { globalThis.fetch = originalFetch; }
-  console.log('PASS: shared pricing, minimums, zero fee, invalid quantities, API validation, stale-price rejection, persisted enquiry, retry deduplication, staff queue transitions, appointment guard, notes preservation, CSV, service URL, area pages, callback requests, booking tracking with reschedule/cancel rules, and honest offline failure.');
+  console.log('PASS: shared pricing, minimums, zero fee, invalid quantities, API validation, stale-price rejection, persisted enquiry, retry deduplication, staff queue transitions, appointment guard, notes preservation, CSV, service URL, area pages, callback requests, booking tracking with reschedule/cancel rules, spam limits, staff lockout, and honest offline failure.');
 } finally {
   server.kill();
   await new Promise(resolve => server.once('exit', resolve));

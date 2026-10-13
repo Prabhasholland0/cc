@@ -56,7 +56,7 @@ function StaffPortal({ onClose, pricingConfig, onPricingUpdated }: Props) {
     setAlertsOn((await Notification.requestPermission()) === 'granted');
     playChime();
   };
-  const load = async () => { setError(''); setBusy(true); try { setRecords(await fetchEnquiriesApi(token)); setAuthenticated(true); fetchCallbacksApi(token).then(setCallbacks).catch(() => setError('Enquiries loaded, but callback requests could not be loaded.')); } catch { setError('Unable to load enquiries. Check your staff passcode and server connection.'); } finally { setBusy(false); } };
+  const load = async () => { setError(''); setBusy(true); try { setRecords(await fetchEnquiriesApi(token)); setAuthenticated(true); fetchCallbacksApi(token).then(setCallbacks).catch(() => setError('Enquiries loaded, but callback requests could not be loaded.')); } catch (e) { const text = (e as Error).message; setError(text.startsWith('Too many') ? text : 'Unable to load enquiries. Check your staff passcode and server connection.'); } finally { setBusy(false); } };
   const login = (event: FormEvent) => { event.preventDefault(); void load(); };
   const saveRecord = async (id: string, updates: Parameters<typeof updateEnquiryStatusApi>[1]) => {
     const result = await updateEnquiryStatusApi(id, updates, token);
