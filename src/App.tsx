@@ -21,7 +21,8 @@ import { Promises } from './components/Promises';
 import { Plans } from './components/Plans';
 import { OfferBanner } from './components/OfferBanner';
 import { findArea } from './data/areas';
-import { Phone } from 'lucide-react';
+import { Phone, MessageCircle } from 'lucide-react';
+import { startReveal } from './lib/reveal';
 import { DEFAULT_PRICING } from './data/defaultPricing';
 import { fetchPricing } from './services/api';
 import { defaultSelection } from './lib/pricing';
@@ -34,6 +35,7 @@ export function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const [pricingAvailable, setPricingAvailable] = useState(false);
+  useEffect(() => startReveal(), []);
   useEffect(() => { fetchPricing().then(data => { setPricingConfig(data); setPricingAvailable(true); }).catch(() => setPricingAvailable(false)); }, []);
   const openBooking = (serviceId?: string, packageId?: string) => setBooking(defaultSelection(pricingConfig, serviceId, packageId));
   const servicePath = window.location.pathname.match(/^\/services\/([^/]+)\/?$/)?.[1];
@@ -64,6 +66,7 @@ export function App() {
     </main>
     <Footer onOpenPrivacy={() => setPrivacyOpen(true)} onOpenTerms={() => setTermsOpen(true)} onOpenBooking={() => openBooking(service?.id)} />
     {!booking && !adminOpen && !privacyOpen && !termsOpen && <div className="mobile-action-bar"><a className="mobile-call" href="tel:+919515447834" aria-label="Call Clean Corners"><Phone size={20} aria-hidden="true" /></a><button className="primary-button" onClick={() => openBooking(service?.id)}>Book a cleaning</button><a className="mobile-whatsapp" href="https://wa.me/919515447834?text=Hello%20Clean%20Corners%2C%20I%20would%20like%20a%20cleaning%20estimate." target="_blank" rel="noopener noreferrer">WhatsApp</a></div>}
+    {!booking && !adminOpen && !privacyOpen && !termsOpen && <a className="whatsapp-fab" href="https://wa.me/919515447834?text=Hello%20Clean%20Corners%2C%20I%20would%20like%20a%20cleaning%20estimate." target="_blank" rel="noopener noreferrer" aria-label="Chat with Clean Corners on WhatsApp"><MessageCircle aria-hidden="true" /><span>Chat with us</span></a>}
     {booking && <BookingModal pricingConfig={pricingConfig} initialSelection={booking} onClose={() => setBooking(null)} />}
     <AdminPortal isOpen={adminOpen} onClose={() => setAdminOpen(false)} pricingConfig={pricingConfig} onPricingUpdated={data => { setPricingConfig(data); setPricingAvailable(true); }} />
     {privacyOpen && <PrivacyPolicyModal isOpen onClose={() => setPrivacyOpen(false)} />}

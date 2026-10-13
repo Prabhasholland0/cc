@@ -29,7 +29,7 @@ export const WhyCleanCorners = () => (
       </div>
     </section>
 
-    <section id="standards" className="section section-tint" aria-labelledby="standards-title">
+    <section id="standards" className="section section-dark standards-band" aria-labelledby="standards-title">
       <div className="page-width">
         <SectionHeading id="standards-title" eyebrow="Our standards" title="Professional care, on every visit." intro="The right equipment, safe products and a written checklist, so you always know what you’re getting." />
         <ul className="feature-grid">
